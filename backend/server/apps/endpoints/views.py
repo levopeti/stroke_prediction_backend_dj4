@@ -216,6 +216,7 @@ class SaveAndPredictView(views.APIView):
                     )
                     measurement_list.append(measurement)
 
+                    print(len(measurement_list))
                     if len(measurement_list) == chunk_size:
                         Measurements.objects.bulk_create(measurement_list)
                         measurement_list = list()
@@ -320,7 +321,7 @@ class SaveAndPredictView(views.APIView):
         # sleep(3)
 
         try:
-            _chunk_size = 2000
+            _chunk_size = 500
             input_data = write_data_into_db(_chunk_size)
         except Exception as e:
             print(e)
