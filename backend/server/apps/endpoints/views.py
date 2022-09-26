@@ -192,7 +192,7 @@ class SaveAndPredictView(views.APIView):
         #     _algorithm_object = registry.endpoints[3]
         #     return _algorithm_object
 
-        def write_data_into_db():
+        def write_data_into_db(chunk_size):
             if isinstance(request.data, dict):
                 _input_data = json.loads(json.dumps(request.data))
             elif isinstance(request.data, str):
@@ -215,7 +215,14 @@ class SaveAndPredictView(views.APIView):
                         v3=Decimal(str(round(value["vector"]["v3"], 3))),
                     )
                     measurement_list.append(measurement)
-            Measurements.objects.bulk_create(measurement_list)
+
+                    if len(measurement_list) == chunk_size:
+                        Measurements.objects.bulk_create(measurement_list)
+                        measurement_list = list()
+
+            if len(measurement_list) > 0:
+                Measurements.objects.bulk_create(measurement_list)
+
             return _input_data
 
         def get_meas_from_db():
@@ -313,7 +320,8 @@ class SaveAndPredictView(views.APIView):
         # sleep(3)
 
         try:
-            input_data = write_data_into_db()
+            _chunk_size = 2000
+            input_data = write_data_into_db(_chunk_size)
         except Exception as e:
             print(e)
             # exc_type, exc_obj, exc_tb = sys.exc_info()
