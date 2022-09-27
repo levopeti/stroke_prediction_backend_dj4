@@ -78,28 +78,13 @@ WSGI_APPLICATION = 'server.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',  # <-- UPDATED line
-        'NAME': 'mysql',  # os.path.join(BASE_DIR, 'mytestdb'),  # <-- UPDATED line
-        'USER': 'root',  # <-- UPDATED line
-        'PASSWORD': 'wv5N9Z1yVYgVaRfkNr2bTzmppZA8uzxD',  # <-- UPDATED line 666Pw666*
-        'HOST': 'q1alsx.stackhero-network.com',  # <-- UPDATED line
-        'PORT': '3306',
-    }
-    # 'default': {
-    #     'ENGINE': 'django.db.backends.sqlite3',
-    #     'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    # }
-}
-
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.mysql',  # <-- UPDATED line
-#         'NAME': 'mytestdb',  # os.path.join(BASE_DIR, 'mytestdb'),  # <-- UPDATED line
-#         'USER': 'test',  # <-- UPDATED line
-#         'PASSWORD': 'Secret_1234',  # <-- UPDATED line 666Pw666*
-#         'HOST': 'localhost',  # <-- UPDATED line
+#         'NAME': 'mysql',  # os.path.join(BASE_DIR, 'mytestdb'),  # <-- UPDATED line
+#         'USER': 'root',  # <-- UPDATED line
+#         'PASSWORD': 'wv5N9Z1yVYgVaRfkNr2bTzmppZA8uzxD',  # <-- UPDATED line 666Pw666*
+#         'HOST': 'q1alsx.stackhero-network.com',  # <-- UPDATED line
 #         'PORT': '3306',
 #     }
 #     # 'default': {
@@ -107,6 +92,21 @@ DATABASES = {
 #     #     'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
 #     # }
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',  # <-- UPDATED line
+        'NAME': 'mytestdb',  # os.path.join(BASE_DIR, 'mytestdb'),  # <-- UPDATED line
+        'USER': 'test',  # <-- UPDATED line
+        'PASSWORD': 'Secret_1234',  # <-- UPDATED line 666Pw666*
+        'HOST': 'localhost',  # <-- UPDATED line
+        'PORT': '3306',
+    }
+    # 'default': {
+    #     'ENGINE': 'django.db.backends.sqlite3',
+    #     'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+    # }
+}
 
 
 # Password validation

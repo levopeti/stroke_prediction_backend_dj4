@@ -22,11 +22,12 @@ from apps.endpoints.serializers import EndpointSerializer
 
 import json
 import pandas as pd
+import time
 from numpy.random import rand
 from rest_framework import views, status
 from rest_framework.response import Response
 # from apps.ml.registry import MLRegistry
-from apps.ml.income_classifier.measurement import Measurement, NotEnoughData
+from apps.ml.income_classifier.measurement import Measurement, NotEnoughData, TimeStampTooHigh, SynchronizationError
 from server.wsgi import mlp
 from decimal import Decimal
 import traceback
@@ -131,7 +132,7 @@ class SaveAndPredictView(views.APIView):
         {"measure": [{"limp": "f",
                      "side": "l",
                      "type": "g",
-                     "values": [{"timestamp": 1224L,
+                     "values": [{"timestamp": 1224L,  # 1639427740008
                                  "vector": {"v1": 123f,
                                             "v2": 1234f,
                                             "v3": 322f
@@ -169,6 +170,7 @@ class SaveAndPredictView(views.APIView):
     def post(self, request, endpoint_name, format=None):
         def load_ml_algorithm():
             return mlp
+
         # def old_load_ml_algorithm():
         #     algorithm_status = self.request.query_params.get("status", "production")
         #     algorithm_version = "0.0.1"  # self.request.query_params.get("version")
@@ -202,8 +204,12 @@ class SaveAndPredictView(views.APIView):
 
             measurement_id = _input_data["measurement_id"]
             measurement_list = list()
+            first_timestamp = float("inf")
             for measurement_item in _input_data["measure"]:
                 for value in measurement_item["values"]:
+                    if value["timestamp"] < first_timestamp:
+                        first_timestamp = value["timestamp"]
+
                     measurement = Measurements(
                         measurement_id=measurement_id,
                         timestamp=value["timestamp"],
@@ -216,7 +222,6 @@ class SaveAndPredictView(views.APIView):
                     )
                     measurement_list.append(measurement)
 
-                    print(len(measurement_list))
                     if len(measurement_list) == chunk_size:
                         Measurements.objects.bulk_create(measurement_list)
                         measurement_list = list()
@@ -224,42 +229,43 @@ class SaveAndPredictView(views.APIView):
             if len(measurement_list) > 0:
                 Measurements.objects.bulk_create(measurement_list)
 
-            return _input_data
+            assert first_timestamp < float("inf")
+            return _input_data, first_timestamp
 
-        def get_meas_from_db():
+        def get_meas_from_db(meas_length_min, first_timestamp_ms):
+            key_list = [("left", "arm", "acc"),
+                        ("left", "arm", "gyr"),
+                        ("left", "leg", "acc"),
+                        ("left", "leg", "gyr"),
+                        ("right", "arm", "acc"),
+                        ("right", "arm", "gyr"),
+                        ("right", "leg", "acc"),
+                        ("right", "leg", "gyr")]
+
+            key_map = {
+                ("left", "arm", "acc"):  ("l", "a", "a"),
+                ("left", "arm", "gyr"):  ("l", "a", "g"),
+                ("left", "leg", "acc"):  ("l", "f", "a"),
+                ("left", "leg", "gyr"):  ("l", "f", "g"),
+                ("right", "arm", "acc"): ("r", "a", "a"),
+                ("right", "arm", "gyr"): ("r", "a", "g"),
+                ("right", "leg", "acc"): ("r", "f", "a"),
+                ("right", "leg", "gyr"): ("r", "f", "g"),
+            }
+
+            meas_length_ms = int(meas_length_min * 60 * 1e3)
+            # current_timestamp_ms = time.time_ns() * 1e6
+
+            start_timestamp = first_timestamp_ms - meas_length_ms
             measurement_id = input_data["measurement_id"]
-            left_arm_acc = Measurements.objects.filter(measurement_id=measurement_id,
-                                                       measurement_type="a",
-                                                       limp_type="a",
-                                                       limp_side="l").values()
-            left_arm_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-                                                       measurement_type="g",
-                                                       limp_type="a",
-                                                       limp_side="l").values()
-            right_arm_acc = Measurements.objects.filter(measurement_id=measurement_id,
-                                                        measurement_type="a",
-                                                        limp_type="a",
-                                                        limp_side="r").values()
-            right_arm_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-                                                        measurement_type="g",
-                                                        limp_type="a",
-                                                        limp_side="r").values()
-            left_foot_acc = Measurements.objects.filter(measurement_id=measurement_id,
-                                                        measurement_type="a",
-                                                        limp_type="f",
-                                                        limp_side="l").values()
-            left_foot_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-                                                        measurement_type="g",
-                                                        limp_type="f",
-                                                        limp_side="l").values()
-            right_foot_acc = Measurements.objects.filter(measurement_id=measurement_id,
-                                                         measurement_type="a",
-                                                         limp_type="f",
-                                                         limp_side="r").values()
-            right_foot_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-                                                         measurement_type="g",
-                                                         limp_type="f",
-                                                         limp_side="r").values()
+
+            def make_query(_keys):
+                query = Measurements.objects.filter(timestamp__gte=start_timestamp,
+                                                    measurement_id=measurement_id,
+                                                    measurement_type=key_map[_keys][2],
+                                                    limp_type=key_map[_keys][1],
+                                                    limp_side=key_map[_keys][0]).values()
+                return query
 
             def df_from_query(queries):
                 df_dict = {'timestamp': list(),
@@ -278,72 +284,117 @@ class SaveAndPredictView(views.APIView):
 
                 return pd.DataFrame.from_dict(df_dict)
 
+            # left_arm_acc = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                            measurement_type="a",
+            #                                            limp_type="a",
+            #                                            limp_side="l",
+            #                                            timestamp__gte=start_timestamp).values()
+            # left_arm_gyr = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                            measurement_type="g",
+            #                                            limp_type="a",
+            #                                            limp_side="l").values()
+            # right_arm_acc = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                             measurement_type="a",
+            #                                             limp_type="a",
+            #                                             limp_side="r").values()
+            # right_arm_gyr = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                             measurement_type="g",
+            #                                             limp_type="a",
+            #                                             limp_side="r").values()
+            # left_foot_acc = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                             measurement_type="a",
+            #                                             limp_type="f",
+            #                                             limp_side="l").values()
+            # left_foot_gyr = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                             measurement_type="g",
+            #                                             limp_type="f",
+            #                                             limp_side="l").values()
+            # right_foot_acc = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                              measurement_type="a",
+            #                                              limp_type="f",
+            #                                              limp_side="r").values()
+            # right_foot_gyr = Measurements.objects.filter(measurement_id=measurement_id,
+            #                                              measurement_type="g",
+            #                                              limp_type="f",
+            #                                              limp_side="r").values()
+
             _meas = Measurement(measurement_id)
-
-            _meas.measurement_dict = {
-                ("left", "arm", "acc"): df_from_query(left_arm_acc),
-                ("left", "arm", "gyr"): df_from_query(left_arm_gyr),
-                ("left", "leg", "acc"): df_from_query(left_foot_acc),
-                ("left", "leg", "gyr"): df_from_query(left_foot_gyr),
-                ("right", "arm", "acc"): df_from_query(right_arm_acc),
-                ("right", "arm", "gyr"): df_from_query(right_arm_gyr),
-                ("right", "leg", "acc"): df_from_query(right_foot_acc),
-                ("right", "leg", "gyr"): df_from_query(right_foot_gyr),
-            }
-
+            _meas.measurement_dict = {keys: df_from_query(make_query(keys)) for keys in key_list}
             return _meas
 
-        def get_instance():
-            frequency = 25  # Hz, 40 ms
+        def get_instances(meas_length_min, inference_delta_sec, first_timestamp_ms):
+            frequency = 25  # Hz, T = 40 ms
             expected_delta = (1 / frequency) * 1000  # ms
             eps = 3
             meas.check_frequency(expected_delta, eps=eps)
             meas.synchronize_measurement_dict()
 
-            minutes = 10
-            length = frequency * 60 * minutes
+            length = frequency * 60 * meas_length_min
+            inference_delta_ms = inference_delta_sec * 1e3
             keys_in_order = (("arm", "acc"),
                              ("leg", "acc"),
                              ("arm", "gyr"),
                              ("leg", "gyr"))
 
-            _instance = list()
-            for key in keys_in_order:
-                diff_mean = meas.get_limb_diff_mean(key[0], key[1], length)
-                ratio_mean_first = meas.get_limb_ratio_mean(key[0], key[1], length, mean_first=True)
-                ratio_mean = meas.get_limb_ratio_mean(key[0], key[1], length, mean_first=False)
+            def collect_instances():
+                _instance_list = list()
+                _inference_ts_list = list()
+                i = 0
+                while True:
+                    end_ts = int(first_timestamp_ms + inference_delta_ms * i)
+                    i += 1
+                    _instance = list()
+                    for key in keys_in_order:
+                        try:
+                            diff_mean = meas.get_limb_diff_mean(key[0], key[1], length, end_ts=end_ts)
+                            ratio_mean_first = meas.get_limb_ratio_mean(key[0], key[1], length, end_ts=end_ts,
+                                                                        mean_first=True)
+                            ratio_mean = meas.get_limb_ratio_mean(key[0], key[1], length, end_ts=end_ts,
+                                                                  mean_first=False)
+                        except NotEnoughData:
+                            break
+                        except TimeStampTooHigh:
+                            return _instance_list, _inference_ts_list
 
-                _instance.append([diff_mean, ratio_mean_first, ratio_mean])
+                        _instance.append([diff_mean, ratio_mean_first, ratio_mean])
 
-            return sum(_instance, [])
+                    if len(_instance) > 0:
+                        _instance_list.append(sum(_instance, []))
+                        _inference_ts_list.append(end_ts)
 
-        # from time import sleep
-        # sleep(3)
+            return collect_instances()
 
         try:
-            _chunk_size = 500
-            input_data = write_data_into_db(_chunk_size)
+            _chunk_size = 10000
+            input_data, _first_timestamp_ms = write_data_into_db(_chunk_size)
         except Exception as e:
             print(e)
-            # exc_type, exc_obj, exc_tb = sys.exc_info()
-            # fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(traceback.format_exc())
             return Response({"status": "Error during write data into the db: {}, "
                                        "{}".format(repr(e), traceback.format_exc()),
                              "prediction": "None"})
 
         try:
-            meas = get_meas_from_db()
+            _meas_length_min = 10
+            _ts_threshold_min = 10
+            meas = get_meas_from_db(_meas_length_min, _first_timestamp_ms)
         except Exception as e:
             print(e)
             return Response({"status": "Error during get measurement: {}".format(repr(e)), "prediction": "None"})
 
         try:
-            instance = get_instance()
-        except NotEnoughData:
-            return Response({"status": "No prediction, more data needed", "prediction": "None"})
+            _inference_delta_sec = 30  # sec
+            instances, inference_ts_list = get_instances(_meas_length_min, _inference_delta_sec, _first_timestamp_ms)
+            if len(instances) == 0:
+                print("No prediction, more data needed")
+                return Response({"status": "No prediction, more data needed", "prediction": "None"})
+        except SynchronizationError:
+            print("No prediction, more data needed or there is problem with the frequency")
+            return Response({"status": "No prediction, more data needed or there is problem with the frequency",
+                             "prediction": "None"})
         except Exception as e:
             print(e)
+            print(traceback.format_exc())
             return Response({"status": "Error during get instance: {}".format(repr(e)), "prediction": "None"})
 
         try:
@@ -353,107 +404,10 @@ class SaveAndPredictView(views.APIView):
             return Response({"status": "Error during load the algorithm: {}".format(repr(e)), "prediction": "None"})
 
         try:
-            prediction = algorithm_object.compute_prediction([instance])
+            prediction = algorithm_object.compute_prediction(instances, inference_ts_list)
         except Exception as e:
             print(e)
             return Response({"status": "Error during make prediction: {}".format(repr(e)), "prediction": "None"})
 
         print(prediction)
         return Response({"status": "OK", "prediction": prediction})
-
-
-# class ABTestViewSet(
-#     mixins.RetrieveModelMixin, mixins.ListModelMixin, viewsets.GenericViewSet,
-#     mixins.CreateModelMixin, mixins.UpdateModelMixin
-# ):
-#     serializer_class = ABTestSerializer
-#     queryset = ABTest.objects.all()
-#
-#     def perform_create(self, serializer):
-#         try:
-#             with transaction.atomic():
-#                 instance = serializer.save()
-#                 # update status for first algorithm
-#
-#                 status_1 = MLAlgorithmStatus(status="ab_testing",
-#                                              created_by=instance.created_by,
-#                                              parent_mlalgorithm=instance.parent_mlalgorithm_1,
-#                                              active=True)
-#                 status_1.save()
-#                 deactivate_other_statuses(status_1)
-#                 # update status for second algorithm
-#                 status_2 = MLAlgorithmStatus(status="ab_testing",
-#                                              created_by=instance.created_by,
-#                                              parent_mlalgorithm=instance.parent_mlalgorithm_2,
-#                                              active=True)
-#                 status_2.save()
-#                 deactivate_other_statuses(status_2)
-#
-#         except Exception as e:
-#             raise APIException(str(e))
-#
-#
-# from django.db.models import F
-# import datetime
-#
-#
-# class StopABTestView(views.APIView):
-#     def post(self, request, ab_test_id, format=None):
-#
-#         try:
-#             ab_test = ABTest.objects.get(pk=ab_test_id)
-#
-#             if ab_test.ended_at is not None:
-#                 return Response({"message": "AB Test already finished."})
-#
-#             date_now = datetime.datetime.now()
-#             # alg #1 accuracy
-#             all_responses_1 = MLRequest.objects.filter(parent_mlalgorithm=ab_test.parent_mlalgorithm_1,
-#                                                        created_at__gt=ab_test.created_at,
-#                                                        created_at__lt=date_now).count()
-#             correct_responses_1 = MLRequest.objects.filter(parent_mlalgorithm=ab_test.parent_mlalgorithm_1,
-#                                                            created_at__gt=ab_test.created_at, created_at__lt=date_now,
-#                                                            response=F('feedback')).count()
-#             accuracy_1 = correct_responses_1 / float(all_responses_1)
-#             print(all_responses_1, correct_responses_1, accuracy_1)
-#
-#             # alg #2 accuracy
-#             all_responses_2 = MLRequest.objects.filter(parent_mlalgorithm=ab_test.parent_mlalgorithm_2,
-#                                                        created_at__gt=ab_test.created_at,
-#                                                        created_at__lt=date_now).count()
-#             correct_responses_2 = MLRequest.objects.filter(parent_mlalgorithm=ab_test.parent_mlalgorithm_2,
-#                                                            created_at__gt=ab_test.created_at, created_at__lt=date_now,
-#                                                            response=F('feedback')).count()
-#             accuracy_2 = correct_responses_2 / float(all_responses_2)
-#             print(all_responses_2, correct_responses_2, accuracy_2)
-#
-#             # select algorithm with higher accuracy
-#             alg_id_1, alg_id_2 = ab_test.parent_mlalgorithm_1, ab_test.parent_mlalgorithm_2
-#             # swap
-#             if accuracy_1 < accuracy_2:
-#                 alg_id_1, alg_id_2 = alg_id_2, alg_id_1
-#
-#             status_1 = MLAlgorithmStatus(status="production",
-#                                          created_by=ab_test.created_by,
-#                                          parent_mlalgorithm=alg_id_1,
-#                                          active=True)
-#             status_1.save()
-#             deactivate_other_statuses(status_1)
-#             # update status for second algorithm
-#             status_2 = MLAlgorithmStatus(status="testing",
-#                                          created_by=ab_test.created_by,
-#                                          parent_mlalgorithm=alg_id_2,
-#                                          active=True)
-#             status_2.save()
-#             deactivate_other_statuses(status_2)
-#
-#             summary = "Algorithm #1 accuracy: {}, Algorithm #2 accuracy: {}".format(accuracy_1, accuracy_2)
-#             ab_test.ended_at = date_now
-#             ab_test.summary = summary
-#             ab_test.save()
-#
-#         except Exception as e:
-#             return Response({"status": "Error", "message": str(e)},
-#                             status=status.HTTP_400_BAD_REQUEST
-#                             )
-#         return Response({"message": "AB Test finished.", "summary": summary})

@@ -8,6 +8,14 @@ class NotEnoughData(Exception):
     pass
 
 
+class TimeStampTooHigh(Exception):
+    pass
+
+
+class SynchronizationError(Exception):
+    pass
+
+
 class Measurement(object):
     def __init__(self, measurement_name, synchronizing=True):
         self.measurement_name = measurement_name
@@ -89,7 +97,8 @@ class Measurement(object):
                 else:
                     _df = _df.sort_values('timestamp')
                     merged_df = pd.merge_asof(base_df, _df, on="timestamp", tolerance=40, direction='nearest')
-                    assert merged_df.isna().sum().sum() == 0, "merged df has nans during synchronization"
+                    if merged_df.isna().sum().sum() != 0:
+                        raise SynchronizationError("merged df has nans during synchronization")
 
                     columns_for_drop = list()
                     for c_name in merged_df.columns:
@@ -131,9 +140,17 @@ class Measurement(object):
         return left_mask, right_mask
 
     def calculate_diff(self, key, use_abs=True):
-
         meas_type = key[2]
         meas = self.measurement_dict[key]
+
+        if meas_type == "acc":
+            timestamps = meas["timestamp"].values[:-1]
+        else:
+            timestamps = meas["timestamp"].values
+
+        if self.diff_dict[key] is not None:
+            return self.diff_dict[key], timestamps
+
         x_y_z = [meas[("v1", "v2", "v3")[i]] for i in range(3)]
 
         if meas_type == "acc":
@@ -149,10 +166,14 @@ class Measurement(object):
         self.diff_dict[key] = result
 
         assert len(result) > 0, "len(result) > 0"
-        return result
+        return result, timestamps
 
-    def get_diff(self, key, length=None, start_idx=None, use_abs=True, mask=None):
-        result = self.calculate_diff(key, use_abs)
+    def get_diff(self, key, length=None, end_ts=None, use_abs=True, mask=None):
+        result, timestamps = self.calculate_diff(key, use_abs)
+        if end_ts > timestamps.max():
+            raise TimeStampTooHigh("End timestamp is higher than the maximum")
+
+        result = result[timestamps < end_ts]
 
         if mask is not None:
             result = result[mask[:len(result)]]
@@ -161,12 +182,9 @@ class Measurement(object):
             if length > len(result):
                 raise NotEnoughData("After filtering we have less data than expected (length)")
 
-            start_idx = start_idx if start_idx is not None else randint(0, len(result) - (length + 1))
-            if start_idx > len(result) - (length + 1):
-                raise ValueError("start_idx is too large")
-            result = result[start_idx:start_idx + length]
+            result = result[-length:]
 
-        assert len(result) > 0, "len(result) > 0"
+        assert len(result) > 0, "len(result) = 0"
         return result
 
     def sweep_diff(self, key, length, mean=False):
@@ -193,7 +211,7 @@ class Measurement(object):
 
         return result_dict
 
-    def get_limb_diff_mean(self, limb, meas_type="acc", length=None, start_idx=None, use_abs=True, only_valid=True):
+    def get_limb_diff_mean(self, limb, meas_type="acc", length=None, end_ts=None, use_abs=True, only_valid=True):
         assert limb in ["arm", "leg"], "{} not in [arm, leg]".format(limb)
         assert meas_type in ["acc", "gyr"], "{} not in [acc, gyr]".format(meas_type)
         left_key, right_key = ("left", limb, meas_type), ("right", limb, meas_type)
@@ -203,14 +221,14 @@ class Measurement(object):
         else:
             left_mask, right_mask = None, None
 
-        left_diff = self.get_diff(left_key, length, start_idx, use_abs, left_mask)
-        right_diff = self.get_diff(right_key, length, start_idx, use_abs, right_mask)
+        left_diff = self.get_diff(left_key, length, end_ts, use_abs, left_mask)
+        right_diff = self.get_diff(right_key, length, end_ts, use_abs, right_mask)
 
         result = np.abs(left_diff.mean() - right_diff.mean())
         # is_five = self.class_value_dict[("left", limb)] == 5 or self.class_value_dict[("right", limb)] == 5
         return result
 
-    def get_limb_ratio_mean(self, limb, meas_type="acc", length=None, start_idx=None, use_abs=True, only_valid=True,
+    def get_limb_ratio_mean(self, limb, meas_type="acc", length=None, end_ts=None, use_abs=True, only_valid=True,
                             mean_first=True):
         assert limb in ["arm", "leg"], "{} not in [arm, leg]".format(limb)
         assert meas_type in ["acc", "gyr"], "{} not in [acc, gyr]".format(meas_type)
@@ -221,8 +239,8 @@ class Measurement(object):
         else:
             left_mask, right_mask = None, None
 
-        left_diff = self.get_diff(left_key, length, start_idx, use_abs, left_mask)
-        right_diff = self.get_diff(right_key, length, start_idx, use_abs, right_mask)
+        left_diff = self.get_diff(left_key, length, end_ts, use_abs, left_mask)
+        right_diff = self.get_diff(right_key, length, end_ts, use_abs, right_mask)
 
         if mean_first:
             result = left_diff.sum() / right_diff.sum()

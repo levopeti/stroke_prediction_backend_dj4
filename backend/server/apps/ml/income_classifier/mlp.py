@@ -18,16 +18,17 @@ class MLP(object):
     def predict(self, input_data):
         y_pred_list = self.model.predict(input_data)
         label = np.array(y_pred_list).argmax(axis=1).tolist()
-        probability = [y_pred_list[i][label[i]]for i in range(len(label))]
+        probability = [y_pred_list[i][label[i]] for i in range(len(label))]
 
         return {"probability": probability, "label": label, "status": "OK"}
 
-    def compute_prediction(self, input_data):
+    def compute_prediction(self, input_data, timestamps):
         try:
             preprocessed_data = self.preprocessing(input_data)
-            result_dict = self.predict(preprocessed_data)  # only one sample
+            result_dict = self.predict(preprocessed_data)
+            result_dict["timestamps"] = timestamps
         except Exception as e:
-            return {"status": "Error", "message": str(e)}
+            return {"status": "Error", "message": str(e), "timestamps": None}
 
         return result_dict
 
