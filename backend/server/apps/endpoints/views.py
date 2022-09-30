@@ -405,6 +405,7 @@ class SaveAndPredictView(views.APIView):
 
         try:
             prediction = algorithm_object.compute_prediction(instances, inference_ts_list)
+
         except Exception as e:
             print(e)
             return Response({"status": "Error during make prediction: {}".format(repr(e)), "prediction": "None"})
