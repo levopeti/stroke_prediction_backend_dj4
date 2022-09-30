@@ -284,40 +284,6 @@ class SaveAndPredictView(views.APIView):
 
                 return pd.DataFrame.from_dict(df_dict)
 
-            # left_arm_acc = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                            measurement_type="a",
-            #                                            limp_type="a",
-            #                                            limp_side="l",
-            #                                            timestamp__gte=start_timestamp).values()
-            # left_arm_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                            measurement_type="g",
-            #                                            limp_type="a",
-            #                                            limp_side="l").values()
-            # right_arm_acc = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                             measurement_type="a",
-            #                                             limp_type="a",
-            #                                             limp_side="r").values()
-            # right_arm_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                             measurement_type="g",
-            #                                             limp_type="a",
-            #                                             limp_side="r").values()
-            # left_foot_acc = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                             measurement_type="a",
-            #                                             limp_type="f",
-            #                                             limp_side="l").values()
-            # left_foot_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                             measurement_type="g",
-            #                                             limp_type="f",
-            #                                             limp_side="l").values()
-            # right_foot_acc = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                              measurement_type="a",
-            #                                              limp_type="f",
-            #                                              limp_side="r").values()
-            # right_foot_gyr = Measurements.objects.filter(measurement_id=measurement_id,
-            #                                              measurement_type="g",
-            #                                              limp_type="f",
-            #                                              limp_side="r").values()
-
             _meas = Measurement(measurement_id)
             _meas.measurement_dict = {keys: df_from_query(make_query(keys)) for keys in key_list}
             return _meas
@@ -375,8 +341,7 @@ class SaveAndPredictView(views.APIView):
                              "prediction": "None"})
 
         try:
-            _meas_length_min = 10
-            _ts_threshold_min = 10
+            _meas_length_min = 90
             meas = get_meas_from_db(_meas_length_min, _first_timestamp_ms)
         except Exception as e:
             print(e)
