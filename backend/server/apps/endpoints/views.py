@@ -227,50 +227,73 @@ class SaveAndPredictView(views.APIView):
             return collect_instances()
 
         print("get request")
+        time_dict = dict()
+
         try:
+            start_time = time.time()
             _chunk_size = 10000
             input_data, _first_timestamp_ms = write_data_into_db(_chunk_size)
+            time_dict["write_data_into_db"] = time.time() - start_time
         except Exception as e:
             print(e)
             print(traceback.format_exc())
             return Response({"status": "Error during write data into the db: {}, "
                                        "{}".format(repr(e), traceback.format_exc()),
-                             "prediction": "None"})
+                             "prediction": "None",
+                             "time dict": time_dict})
 
         try:
+            start_time = time.time()
             _meas_length_min = 90
             meas = get_meas_from_db(_meas_length_min, _first_timestamp_ms)
+            time_dict["get_measurement"] = time.time() - start_time
         except Exception as e:
             print(e)
-            return Response({"status": "Error during get measurement: {}".format(repr(e)), "prediction": "None"})
+            return Response({"status": "Error during get measurement: {}".format(repr(e)),
+                             "prediction": "None",
+                             "time dict": time_dict})
 
         try:
+            start_time = time.time()
             _inference_delta_sec = 30  # sec
             instances, inference_ts_list = get_instances(_meas_length_min, _inference_delta_sec, _first_timestamp_ms)
+            time_dict["get_instances"] = time.time() - start_time
             if len(instances) == 0:
                 print("No prediction, more data needed")
-                return Response({"status": "No prediction, more data needed", "prediction": "None"})
+                return Response({"status": "No prediction, more data needed",
+                                 "prediction": "None",
+                                 "time dict": time_dict})
         except SynchronizationError:
             print("No prediction, more data needed or there is problem with the frequency")
             return Response({"status": "No prediction, more data needed or there is problem with the frequency",
-                             "prediction": "None"})
+                             "prediction": "None",
+                             "time dict": time_dict})
         except Exception as e:
             print(e)
             print(traceback.format_exc())
-            return Response({"status": "Error during get instance: {}".format(repr(e)), "prediction": "None"})
+            return Response({"status": "Error during get instance: {}".format(repr(e)),
+                             "prediction": "None",
+                             "time dict": time_dict})
 
         try:
+            start_time = time.time()
             algorithm_object = load_ml_algorithm()
+            time_dict["load_ml_algorithm"] = time.time() - start_time
         except Exception as e:
             print(e)
-            return Response({"status": "Error during load the algorithm: {}".format(repr(e)), "prediction": "None"})
+            return Response({"status": "Error during load the algorithm: {}".format(repr(e)),
+                             "prediction": "None",
+                             "time dict": time_dict})
 
         try:
+            start_time = time.time()
             prediction = algorithm_object.compute_prediction(instances, inference_ts_list)
-
+            time_dict["compute_prediction"] = time.time() - start_time
         except Exception as e:
             print(e)
-            return Response({"status": "Error during make prediction: {}".format(repr(e)), "prediction": "None"})
+            return Response({"status": "Error during make prediction: {}".format(repr(e)),
+                             "prediction": "None",
+                             "time dict": time_dict})
 
         print(prediction)
-        return Response({"status": "OK", "prediction": prediction})
+        return Response({"status": "OK", "prediction": prediction, "time dict": time_dict})
