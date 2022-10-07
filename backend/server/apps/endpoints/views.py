@@ -182,6 +182,10 @@ class SaveAndPredictView(views.APIView):
 
             _meas = Measurement(measurement_id)
             _meas.measurement_dict = {keys: df_from_query(make_query(keys)) for keys in key_list}
+
+            if None in list(_meas.measurement_dict.keys()):
+                raise ValueError("Measurement does not have all type of value (yet)")
+
             return _meas
 
         def get_instances(meas_length_min, inference_delta_sec, first_timestamp_ms):
