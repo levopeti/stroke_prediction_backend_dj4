@@ -183,7 +183,7 @@ class SaveAndPredictView(views.APIView):
             _meas = Measurement(measurement_id)
             _meas.measurement_dict = {keys: df_from_query(make_query(keys)) for keys in key_list}
 
-            if None in list(_meas.measurement_dict.keys()):
+            if 0 in [len(x) for x in _meas.measurement_dict.values()]:
                 raise ValueError("Measurement does not have all type of value (yet)")
 
             return _meas
