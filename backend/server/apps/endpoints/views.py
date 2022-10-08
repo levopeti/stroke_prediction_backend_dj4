@@ -123,9 +123,13 @@ class SaveAndPredictView(views.APIView):
                         measurement_list = list()
 
             if len(measurement_list) > 0:
-                Measurements.objects.bulk_create(measurement_list)
+                if first_timestamp == float("inf"):
+                    raise ValueError("There is problem with timestamps")
+                else:
+                    Measurements.objects.bulk_create(measurement_list)
+            else:
+                raise ValueError("Measurement list is empty")
 
-            assert first_timestamp < float("inf")
             return _input_data, first_timestamp
 
         def get_meas_from_db(meas_length_min, first_timestamp_ms):
