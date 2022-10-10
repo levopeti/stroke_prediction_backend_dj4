@@ -238,10 +238,12 @@ class SaveAndPredictView(views.APIView):
         time_dict = dict()
 
         try:
+            print("\twrite data into db, ", end="")
             start_time = time.time()
             _chunk_size = 10000
             input_data, _first_timestamp_ms = write_data_into_db(_chunk_size)
             time_dict["write_data_into_db"] = time.time() - start_time
+            print("time: {}".format(time_dict["write_data_into_db"]))
         except Exception as e:
             print(e)
             print(traceback.format_exc())
@@ -251,10 +253,12 @@ class SaveAndPredictView(views.APIView):
                              "time dict": time_dict})
 
         try:
+            print("\tget measurement, ", end="")
             start_time = time.time()
             _meas_length_min = 90
             meas = get_meas_from_db(_meas_length_min, _first_timestamp_ms)
             time_dict["get_measurement"] = time.time() - start_time
+            print("time: {}".format(time_dict["get_measurement"]))
         except Exception as e:
             print(e)
             return Response({"status": "Error during get measurement: {}".format(repr(e)),
@@ -262,10 +266,12 @@ class SaveAndPredictView(views.APIView):
                              "time dict": time_dict})
 
         try:
+            print("\tget instance, ", end="")
             start_time = time.time()
             _inference_delta_sec = 30  # sec
             instances, inference_ts_list = get_instances(_meas_length_min, _inference_delta_sec, _first_timestamp_ms)
             time_dict["get_instances"] = time.time() - start_time
+            print("time: {}".format(time_dict["get_instances"]))
             if len(instances) == 0:
                 print("No prediction, more data needed")
                 return Response({"status": "No prediction, more data needed",
@@ -284,9 +290,11 @@ class SaveAndPredictView(views.APIView):
                              "time dict": time_dict})
 
         try:
+            print("\tload ml algorithm, ", end="")
             start_time = time.time()
             algorithm_object = load_ml_algorithm()
             time_dict["load_ml_algorithm"] = time.time() - start_time
+            print("time: {}".format(time_dict["load_ml_algorithm"]))
         except Exception as e:
             print(e)
             return Response({"status": "Error during load the algorithm: {}".format(repr(e)),
@@ -294,9 +302,11 @@ class SaveAndPredictView(views.APIView):
                              "time dict": time_dict})
 
         try:
+            print("\tcompute prediction, ", end="")
             start_time = time.time()
             prediction = algorithm_object.compute_prediction(instances, inference_ts_list)
             time_dict["compute_prediction"] = time.time() - start_time
+            print("time: {}".format(time_dict["compute_prediction"]))
         except Exception as e:
             print(e)
             return Response({"status": "Error during make prediction: {}".format(repr(e)),
